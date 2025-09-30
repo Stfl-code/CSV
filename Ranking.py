@@ -7,17 +7,18 @@ gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
 sh = gc.open_by_key(st.secrets["sheet"]["id"])
 
 # Onglet "Résultats"
-worksheet = sh.sheet1
+resultats = sh.worksheet("resultats")
 
 # Onglet "Joueurs"
-try:
-    joueurs_ws = sh.worksheet("Joueurs")  # crée un onglet "Joueurs" avec une liste simple en colonne A
-    joueurs = joueurs_ws.col_values(1)[1:]  # saute l’entête si tu en as un
-except:
-    joueurs = []
+joueurs = sh.worksheet("joueurs")
+prenoms = joueurs.col_values(1)[1:]
+noms = joueurs.col_values(2)[1:]
+
+# Concatène prénom + nom pour chaque joueur
+liste_joueurs = [f"{p} {n}" for p, n in zip(prenoms, noms)]
 
 # Charger les résultats existants
-rows = worksheet.get_all_records()
+rows = resultats.get_all_records()
 df = pd.DataFrame(rows)
 
 # Onglets
@@ -28,8 +29,8 @@ with tabs[0]:
     st.header("Saisie d'un nouveau résultat")
 
     with st.form("saisie_resultat"):
-        joueur_A = st.selectbox("Joueur A", options=joueurs)
-        joueur_B = st.selectbox("Joueur B", options=[j for j in joueurs if j != joueur_A])
+        joueur_A = st.selectbox("Joueur A", options=liste_joueurs )
+        joueur_B = st.selectbox("Joueur B", options=[j for j in liste_joueurs  if j != joueur_A])
         score_A = st.number_input("Score A", min_value=0, max_value=13, value=0)
         score_B = st.number_input("Score B", min_value=0, max_value=13, value=0)
         submitted = st.form_submit_button("Enregistrer")
@@ -45,12 +46,12 @@ with tabs[0]:
                         or ((df["joueur_A"] == joueur_B) & (df["joueur_B"] == joueur_A)).any()
                     )
                 if existe_deja:
-                    st.error("⚠️ Un résultat existe déjà pour cette paire de joueurs.")
+                    st.error("⚠️ Un résultat existe déjà pour ces 2 joueurs, s'il est nécessaire de le modifier veuillez contacter Stef-la-pétanque")
                 else:
-                    worksheet.append_row([joueur_A, joueur_B, score_A, score_B])
+                    resultats.append_row([joueur_A, joueur_B, score_A, score_B])
                     st.success("✅ Résultat enregistré avec succès")
             else:
-                st.error("⚠️ Score invalide : un joueur doit avoir 13 points et l’autre moins de 13.")
+                st.error("⚠️ Score invalide : Une partie de pétanque ça se joue en 13 !")
 
 # --- Onglet 2 : Stats ---
 with tabs[1]:
@@ -60,7 +61,7 @@ with tabs[1]:
 
         # Exemple : pourcentage de victoires par joueur
         stats = []
-        for joueur in joueurs:
+        for joueur in liste_joueurs:
             parties = df[(df["joueur_A"] == joueur) | (df["joueur_B"] == joueur)]
             if not parties.empty:
                 victoires = (
