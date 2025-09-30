@@ -1,120 +1,76 @@
 import streamlit as st
+import gspread
 import pandas as pd
-from github import Github
-import base64
-import os
 
-# -------------------------
-# Paramètres
-# -------------------------
-GITHUB_REPO = st.secrets.get("GITHUB_REPO", "Stfl-code/CSV")
-RESULTS_PATH = "resultats.csv"
-PLAYERS_PATH = "joueurs.csv"
+# Connexion à Google Sheets
+gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
+sh = gc.open_by_key(st.secrets["sheet"]["id"])
 
-# Authentification GitHub
-GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
-g = Github(GITHUB_TOKEN)
-repo = g.get_repo(GITHUB_REPO)
+# Onglet "Résultats"
+worksheet = sh.sheet1
 
-# -------------------------
-# Charger les fichiers depuis GitHub
-# -------------------------
-def load_csv_from_github(path):
-    try:
-        contents = repo.get_contents(path)
-        df = pd.read_csv(pd.compat.StringIO(contents.decoded_content.decode()))
-        return df, contents
-    except Exception:
-        return pd.DataFrame(), None
+# Onglet "Joueurs"
+try:
+    joueurs_ws = sh.worksheet("Joueurs")  # crée un onglet "Joueurs" avec une liste simple en colonne A
+    joueurs = joueurs_ws.col_values(1)[1:]  # saute l’entête si tu en as un
+except:
+    joueurs = []
 
-# Charger joueurs et résultats
-df, results_file = load_csv_from_github(RESULTS_PATH)
-if df.empty:
-    df = pd.DataFrame(columns=["joueur_A", "joueur_B", "score_A", "score_B", "vainqueur"])
+# Charger les résultats existants
+rows = worksheet.get_all_records()
+df = pd.DataFrame(rows)
 
-players_df, _ = load_csv_from_github(PLAYERS_PATH)
-if not players_df.empty:
-    joueurs_list = players_df["Nom"].tolist()
-else:
-    joueurs_list = ["Jean", "Paul", "Marie", "Lucas"]
-
-# -------------------------
-# Sauvegarde sur GitHub
-# -------------------------
-def save_to_github(df, path, file_ref):
-    csv_bytes = df.to_csv(index=False).encode()
-    message = "Mise à jour résultats via Streamlit"
-    if file_ref:
-        repo.update_file(file_ref.path, message, csv_bytes.decode(), file_ref.sha)
-    else:
-        repo.create_file(path, message, csv_bytes.decode())
-
-# -------------------------
-# Onglets Streamlit
-# -------------------------
+# Onglets
 tabs = st.tabs(["➕ Saisie des résultats", "📊 Statistiques"])
 
-# -------------------------
-# Onglet 1 : Saisie des résultats
-# -------------------------
+# --- Onglet 1 : Saisie ---
 with tabs[0]:
     st.header("Saisie d'un nouveau résultat")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        new_joueur_A = st.selectbox("Joueur A", options=joueurs_list, index=0)
-    with col2:
-        new_joueur_B = st.selectbox("Joueur B", options=joueurs_list, index=1)
+    with st.form("saisie_resultat"):
+        joueur_A = st.selectbox("Joueur A", options=joueurs)
+        joueur_B = st.selectbox("Joueur B", options=[j for j in joueurs if j != joueur_A])
+        score_A = st.number_input("Score A", min_value=0, max_value=13, value=0)
+        score_B = st.number_input("Score B", min_value=0, max_value=13, value=0)
+        submitted = st.form_submit_button("Enregistrer")
 
-    score_A = st.number_input("Score A", min_value=0, max_value=13, value=0)
-    score_B = st.number_input("Score B", min_value=0, max_value=13, value=0)
-
-    if st.button("Vérifier le résultat"):
-        if new_joueur_A == new_joueur_B:
-            st.error("Un joueur ne peut pas jouer contre lui-même.")
-        else:
-            # Vérification si la paire existe déjà
-            deja_joue = not df[((df["joueur_A"] == new_joueur_A) & (df["joueur_B"] == new_joueur_B)) |
-                                ((df["joueur_A"] == new_joueur_B) & (df["joueur_B"] == new_joueur_A))].empty
-            if deja_joue:
-                st.error("Un résultat existe déjà pour cette paire de joueurs.")
+        if submitted:
+            # Vérifications de validité
+            if (score_A == 13 and score_B < 13) or (score_B == 13 and score_A < 13):
+                # Vérifier qu'il n’existe pas déjà un résultat entre ces deux joueurs
+                existe_deja = False
+                if not df.empty:
+                    existe_deja = (
+                        ((df["joueur_A"] == joueur_A) & (df["joueur_B"] == joueur_B)).any()
+                        or ((df["joueur_A"] == joueur_B) & (df["joueur_B"] == joueur_A)).any()
+                    )
+                if existe_deja:
+                    st.error("⚠️ Un résultat existe déjà pour cette paire de joueurs.")
+                else:
+                    worksheet.append_row([joueur_A, joueur_B, score_A, score_B])
+                    st.success("✅ Résultat enregistré avec succès")
             else:
-                vainqueur = new_joueur_A if score_A > score_B else new_joueur_B
-                st.info(f"⚖️ Résumé : {new_joueur_A} {score_A} - {score_B} {new_joueur_B} → Vainqueur : {vainqueur}")
+                st.error("⚠️ Score invalide : un joueur doit avoir 13 points et l’autre moins de 13.")
 
-                confirm_col1, confirm_col2 = st.columns(2)
-                with confirm_col1:
-                    if st.button("✅ Confirmer"):
-                        new_data = pd.DataFrame([[new_joueur_A, new_joueur_B, score_A, score_B, vainqueur]],
-                                                columns=df.columns)
-                        df = pd.concat([df, new_data], ignore_index=True)
-                        save_to_github(df, RESULTS_PATH, results_file)
-                        st.success("Résultat enregistré et envoyé sur GitHub !")
-                with confirm_col2:
-                    st.button("❌ Annuler")
-
-# -------------------------
-# Onglet 2 : Statistiques
-# -------------------------
+# --- Onglet 2 : Stats ---
 with tabs[1]:
-    st.header("Classement et statistiques")
+    st.header("Statistiques générales")
+    if not df.empty:
+        st.dataframe(df)
 
-    if df.empty:
-        st.info("Aucun résultat enregistré pour l'instant.")
-    else:
-        joueurs = set(df["joueur_A"]).union(set(df["joueur_B"]))
+        # Exemple : pourcentage de victoires par joueur
         stats = []
-        for j in joueurs:
-            jouees = len(df[(df["joueur_A"] == j) | (df["joueur_B"] == j)])
-            gagnees = len(df[df["vainqueur"] == j])
-            perdues = jouees - gagnees
-            points_marques = df.loc[df["joueur_A"] == j, "score_A"].sum() + df.loc[df["joueur_B"] == j, "score_B"].sum()
-            points_encaisses = df.loc[df["joueur_A"] == j, "score_B"].sum() + df.loc[df["joueur_B"] == j, "score_A"].sum()
-            goal_average = points_marques - points_encaisses
-            stats.append([j, jouees, gagnees, perdues, round(gagnees/jouees*100,1) if jouees>0 else 0, points_marques, points_encaisses, goal_average])
+        for joueur in joueurs:
+            parties = df[(df["joueur_A"] == joueur) | (df["joueur_B"] == joueur)]
+            if not parties.empty:
+                victoires = (
+                    ((parties["joueur_A"] == joueur) & (parties["score_A"] == 13))
+                    | ((parties["joueur_B"] == joueur) & (parties["score_B"] == 13))
+                ).sum()
+                taux = 100 * victoires / len(parties)
+                stats.append({"Joueur": joueur, "Victoires": victoires, "Parties": len(parties), "Winrate %": round(taux, 1)})
 
-        stats_df = pd.DataFrame(stats, columns=["Joueur", "Parties jouées", "Victoires", "Défaites", "% Victoires", "Points marqués", "Points encaissés", "Goal Average"])
-        stats_df = stats_df.sort_values(by=["Victoires", "Goal Average"], ascending=[False, False])
-
-        st.dataframe(stats_df, use_container_width=True)
-        st.bar_chart(stats_df.set_index("Joueur")["Victoires"])
+        if stats:
+            st.dataframe(pd.DataFrame(stats).sort_values("Winrate %", ascending=False))
+    else:
+        st.info("Aucun résultat encore enregistré.")
