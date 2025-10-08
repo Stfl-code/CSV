@@ -214,17 +214,28 @@ with tabs[1]:
                 submitted = st.form_submit_button("✅ Enregistrer", use_container_width=True)
             
             if submitted:
-                # Mettre à jour le tournoi
-                cell = tournoi_sheet.find(match_selectionne.replace(" vs ", ""))
-                if cell:
-                    row_idx = cell.row
+                # Trouver la ligne du match dans le sheet
+                all_data = tournoi_sheet.get_all_values()
+                row_idx = None
+                
+                for i, row in enumerate(all_data[1:], start=2):  # Skip header, start at row 2
+                    if (row[0] == j1 and row[1] == j2) or (row[0] == j2 and row[1] == j1):
+                        if row[2] == "à jouer":  # Vérifier que c'est bien un match à jouer
+                            row_idx = i
+                            break
+                
+                if row_idx:
+                    # Mettre à jour le tournoi
                     tournoi_sheet.update(f"C{row_idx}:E{row_idx}", [["terminé", vainqueur, score_perdant]])
                     
                     # Ajouter aussi dans les résultats généraux
-                    resultats.append_row([vainqueur, j2 if vainqueur == j1 else j1, 13, score_perdant])
+                    perdant = j2 if vainqueur == j1 else j1
+                    resultats.append_row([vainqueur, perdant, 13, score_perdant])
                     
                     st.success("✅ Résultat enregistré !")
                     st.rerun()
+                else:
+                    st.error("❌ Erreur : impossible de trouver le match")
 
 # --- Onglet Confrontations ---
 with tabs[2]:
