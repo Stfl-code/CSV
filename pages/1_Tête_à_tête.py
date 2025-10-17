@@ -58,9 +58,12 @@ if not df_tournoi.empty:
 else:
     liste_joueurs = liste_joueurs_complet
 
-# Fonction pour calculer les stats actuelles
-def calculer_stats():
-    stats = {j: {"Victoires": 0, "Défaites": 0, "Points_marques": 0, "Points_encaisses": 0, "Diff": 0} for j in liste_joueurs}
+#############
+# Fonctions #
+#############
+# Fonction pour calculer les stats du tournoi actuel
+def calculer_stats_tournoi():
+    stats_tournoi = {j: {"Victoires": 0, "Défaites": 0, "Points_marques": 0, "Points_encaisses": 0, "Diff": 0} for j in liste_joueurs}
     
     if not df_tournoi.empty:
         for _, row in df_tournoi.iterrows():
@@ -72,16 +75,49 @@ def calculer_stats():
                 
                 perdant = j2 if vainq == j1 else j1
                 
-                if vainq in stats:
-                    stats[vainq]["Victoires"] += 1
-                    stats[vainq]["Points_marques"] += 13
-                    stats[vainq]["Points_encaisses"] += score_p
+                if vainq in stats_tournoi:
+                    stats_tournoi[vainq]["Victoires"] += 1
+                    stats_tournoi[vainq]["Points_marques"] += 13
+                    stats_tournoi[vainq]["Points_encaisses"] += score_p
                 
-                if perdant in stats:
-                    stats[perdant]["Défaites"] += 1
-                    stats[perdant]["Points_marques"] += score_p
-                    stats[perdant]["Points_encaisses"] += 13
+                if perdant in stats_tournoi:
+                    stats_tournoi[perdant]["Défaites"] += 1
+                    stats_tournoi[perdant]["Points_marques"] += score_p
+                    stats_tournoi[perdant]["Points_encaisses"] += 13
     
+    for j in stats_tournoi:
+        stats_tournoi[j]["Diff"] = stats_tournoi[j]["Points_marques"] - stats_tournoi[j]["Points_encaisses"]
+    
+    return stats_tournoi
+
+# Fonction pour calculer les stats du jeu libre
+def calculer_stats():
+    stats = {j: {"Victoires": 0, "Défaites": 0, "Points_marques": 0, "Points_encaisses": 0, "Diff": 0, "Tôle_infligées": 0, "Tôle_encaissées": 0} for j in liste_joueurs_complet}
+    
+    if not df.empty:  # df correspond à la feuille "résultats"
+        for _, row in df.iterrows():
+            vainq = row["vainqueur"]
+            perdant = row["adversaire"]
+            score_v = row.get("score_vainqueur", 13)
+            score_p = row.get("score_adversaire", 0)
+            
+            # Mettre à jour les stats du vainqueur
+            if vainq in stats:
+                stats[vainq]["Victoires"] += 1
+                stats[vainq]["Points_marques"] += score_v
+                stats[vainq]["Points_encaisses"] += score_p
+                if score_p == 0: 
+                    stats[vainq]["Tôle_infligées"] += 1
+            
+            # Mettre à jour les stats du perdant
+            if perdant in stats:
+                stats[perdant]["Défaites"] += 1
+                stats[perdant]["Points_marques"] += score_p
+                stats[perdant]["Points_encaisses"] += score_v
+                if score_p == 0:
+                    stats[perdant]["Tôle_encaissées"] += 1
+    
+    # Calculer la différence de points
     for j in stats:
         stats[j]["Diff"] = stats[j]["Points_marques"] - stats[j]["Points_encaisses"]
     
@@ -89,10 +125,10 @@ def calculer_stats():
 
 # Fonction pour générer les appariements (ronde suisse)
 def generer_appariements_suisse(nb_matchs, joueurs_liste):
-    stats = calculer_stats()
+    stats_tournoi = calculer_stats_tournoi()
     
     # Créer un classement temporaire
-    classement = sorted(stats.items(), key=lambda x: (x[1]["Victoires"], x[1]["Diff"]), reverse=True)
+    classement = sorted(stats_tournoi.items(), key=lambda x: (x[1]["Victoires"], x[1]["Diff"]), reverse=True)
     joueurs_classes = [j[0] for j in classement if j[0] in joueurs_liste]
     
     # Identifier les paires déjà jouées ou programmées
@@ -180,6 +216,13 @@ def generer_appariements_aleatoires(nb_matchs, joueurs_liste):
     
     return nouveaux_matchs
 
+
+# Tableau complet avec mise en surbrillance du joueur sélectionné
+def highlight_joueur(row):
+    if row.name == joueur:
+        return ['background-color: #90EE90; font-weight: bold'] * len(row)  # vert
+    return [''] * len(row)
+
 ########################
 # Choix du mode de jeu #
 ########################
@@ -190,7 +233,6 @@ mode = st.radio(
     horizontal=True
 )
 st.divider()
-
 
 ############################
 # Mode tournoi/championnat #
@@ -422,10 +464,6 @@ if mode == "🏆 Tournoi/Championnat":
                         # Mettre à jour le tournoi
                         tournoi_sheet.update(f"C{row_idx}:F{row_idx}", [["terminé", vainqueur, score_perdant, date]])
                         
-                        # Ajouter aussi dans les résultats généraux
-                        perdant = j2 if vainqueur == j1 else j1
-                        resultats.append_row([vainqueur, perdant, 13, score_perdant, date])
-                        
                         # Recharger les données du tournoi
                         tournoi_rows = tournoi_sheet.get_all_records()
                         st.session_state.df_tournoi = pd.DataFrame(tournoi_rows)
@@ -460,12 +498,12 @@ if mode == "🏆 Tournoi/Championnat":
     with tabs[4]:
         st.header("Classement du tournoi")
         
-        stats = calculer_stats()
+        stats_tournoi = calculer_stats_tournoi()
         
-        if all(s["Victoires"] == 0 and s["Défaites"] == 0 for s in stats.values()):
+        if all(s["Victoires"] == 0 and s["Défaites"] == 0 for s in stats_tournoi.values()):
             st.info("Aucune partie terminée pour le moment")
         else:
-            classement = pd.DataFrame(stats).T
+            classement = pd.DataFrame(stats_tournoi).T
             classement["Parties jouées"] = classement["Victoires"] + classement["Défaites"]
             classement["%_Victoires"] = ((classement["Victoires"] / classement["Parties jouées"]) * 100).round(0).astype(int).astype(str) + "%"
             
@@ -498,9 +536,48 @@ else:
             st.caption(f"Résultat : **{vainqueur}** 13 - {score_perdant} **{joueur_B if vainqueur == joueur_A else joueur_A}**")
                     
             submitted = st.form_submit_button("✅ Enregistrer", use_container_width=True)
+
+        if submitted:
+            # Ajouter aussi dans les résultats généraux
+            perdant = joueur_B if vainqueur == joueur_A else joueur_A
+            resultats.append_row([vainqueur, perdant, 13, score_perdant, date])
+            st.success("✅ Résultat enregistré !")
+            st.rerun()
     
     with tabs[1]:
         # Statistiques globales tous joueurs
-        st.header("Statistiques générales")
+        st.header("Choisissez un joueur pour afficher ses stats et le mettre en surbrillance dans le tableau")
         # Classement basé sur tous les résultats
-        st.image("images/WIP1.jpg", use_container_width=True)
+        stats = calculer_stats()
+
+        # Sélection d'un joueur à afficher
+        joueur = st.selectbox("Choix du joueur", options=liste_joueurs_complet, key="joueur")
+
+        # Mise en forme des stats
+        stats_tab = pd.DataFrame(stats).T
+        
+        # Calcul de stats additionnelles
+        stats_tab["Parties jouées"] = stats_tab["Victoires"] + stats_tab["Défaites"]
+        stats_tab["%_Victoires"] = ((stats_tab["Victoires"] / stats_tab["Parties jouées"]) * 100).fillna(0).replace([float('inf'), -float('inf')], 0).round(0).astype(int).astype(str) + "%"
+        
+        # Affichage des statistiques
+        stats_tab = stats_tab[["Parties jouées", "Victoires", "Défaites", "%_Victoires", "Points_marques", "Points_encaisses", "Diff", "Tôle_infligées", "Tôle_encaissées"]]
+        stats_tab.columns = ["Joué", "Vict", "Déf", "%Vict", "PM", "PE", "Diff", "0-infli", "0-encais"]
+        # Afficher sous forme de métriques plutôt qu'un tableau
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric("Parties jouées", stats_tab.loc[joueur, "Joué"])
+        with col2:
+            st.metric("Victoires", stats_tab.loc[joueur, "Vict"])
+        with col3:
+            st.metric("Défaites", stats_tab.loc[joueur, "Déf"])
+        with col4:
+            st.metric("% Victoires", stats_tab.loc[joueur, "%Vict"])
+        with col5:
+            st.metric("Différence points", stats_tab.loc[joueur, "Diff"])
+
+        st.divider()
+
+        # Affichage du tableau complet
+        stats_tab_styled = stats_tab.style.apply(highlight_joueur, axis=1)
+        st.dataframe(stats_tab_styled, use_container_width=True)
