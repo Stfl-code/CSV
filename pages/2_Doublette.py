@@ -177,8 +177,18 @@ else:
 
         if submitted:
             # Ajouter aussi dans les résultats généraux
-            perdant = equipe_B if vainqueur == equipe_A else equipe_A
-            resultats.append_row([vainqueur, perdant, 13, score_perdant, date])
+            if vainqueur == equipe_A:
+                vainqueur1 = joueur_A1
+                vainqueur2 = joueur_A2
+                adversaire1 = joueur_B1
+                adversaire2 = joueur_B2
+            else:
+                vainqueur1 = joueur_B1
+                vainqueur2 = joueur_B2
+                adversaire1 = joueur_A1
+                adversaire2 = joueur_A2
+
+            resultats_doub.append_row([vainqueur1, vainqueur2, adversaire1, adversaire2, 13, score_perdant, date])
             st.success("✅ Résultat enregistré !")
             st.rerun()
 
@@ -225,7 +235,7 @@ else:
         if partenaire == "Tous":
             st.info(f"📊 Statistiques de **{joueur}** avec tous ses partenaires")
         else:
-            st.info(f"📊 Statistiques de **{joueur}** en duo avec **{partenaire}**")
+            st.info(f"📊 Statistiques de **{joueur}** en doublette avec **{partenaire}**")
 
         # Affichage du tableau complet
         stats_tab_styled = stats_tab.style.apply(highlight_joueur, axis=1)
