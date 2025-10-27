@@ -2,6 +2,11 @@ import streamlit as st
 import gspread
 import pandas as pd
 import random
+import networkx as nx
+import itertools
+import sys
+sys.path.append('..')  # Pour importer depuis la racine
+from utils import init_google_sheets
 
 #############
 # Affichage #
@@ -13,48 +18,39 @@ st.write("# Parties en triplette du club de pétanque de Vaux-sur-Seine")
 #######################
 # Liens et chargement #
 #######################
-# Initialiser la connexion Google Sheets uniquement si nécessaire
-if 'sheets_loaded' not in st.session_state:
-    gc = gspread.service_account_from_dict(st.secrets["gcp_service_account"])
-    sh = gc.open_by_key(st.secrets["sheet"]["id"])
-    
-    # Onglets Google Sheets
-    resultats_trip = sh.worksheet("resultats_trip")
-    joueurs_sheet = sh.worksheet("joueurs")
-    tournoi_trip = sh.worksheet("tournoi_trip")
-    
-    # Charger les joueurs
-    prenoms = joueurs_sheet.col_values(1)[1:]
-    noms = joueurs_sheet.col_values(2)[1:]
-    st.session_state.liste_joueurs_complet = [f"{p} {n}" for p, n in zip(prenoms, noms)]
-    
-    # Charger les matchs du tournoi
-    tournoi_rows_trip = tournoi_trip.get_all_records()
-    st.session_state.df_tournoi_trip = pd.DataFrame(tournoi_rows_trip)
-    
-    # Sauvegarder les worksheets
-    st.session_state.resultats_trip = resultats_trip
-    st.session_state.tournoi_trip = tournoi_trip
-    st.session_state.sheets_loaded = True
-else:
-    resultats_trip = st.session_state.resultats_trip
-    tournoi_trip = st.session_state.tournoi_trip
-
 # Utiliser les données en cache
+init_google_sheets()
 liste_joueurs_complet = st.session_state.liste_joueurs_complet
-df_tournoi_trip = st.session_state.df_tournoi_trip
+
+# Charger les matchs du tournoi
+tournoi_trip_rows = st.session_state.sheet_tournoi_trip.get_all_records()
+tournoi_trip = pd.DataFrame(tournoi_trip_rows)
+
+# Charger les matchs du championnat
+championnat_trip_rows = st.session_state.sheet_championnat_trip.get_all_records()
+championnat_trip = pd.DataFrame(championnat_trip_rows)
 
 # Charger les résultats existants (on recharge à chaque fois car ils changent)
-rows_trip = resultats_trip.get_all_records()
-df_triplette = pd.DataFrame(rows_trip)
+resultats_trip_rows = st.session_state.sheet_resultats_trip.get_all_records()
+resultats_trip_df = pd.DataFrame(resultats_trip_rows)
 
 # Récupérer les joueurs participant au tournoi
 joueurs_tournoi_trip = []
-if not df_tournoi_trip.empty:
-    j1_list = df_tournoi_trip["joueur_1"].unique().tolist()
-    j2_list = df_tournoi_trip["joueur_2"].unique().tolist()
+if not tournoi_trip.empty:
+    j1_list = tournoi_trip["joueur_1"].unique().tolist()
+    j2_list = tournoi_trip["joueur_2"].unique().tolist()
     joueurs_tournoi_trip = list(set(j1_list + j2_list))
-    liste_joueurs_trip = joueurs_tournoi_trip
+    liste_joueurs_trip = joueurs_tournoi_doub
+else:
+    liste_joueurs_trip = liste_joueurs_complet
+
+# Récupérer les joueurs participant au championnat
+joueurs_championnat_trip = []
+if not championnat_trip.empty:
+    j1_list = championnat_trip["joueur_1"].unique().tolist()
+    j2_list = championnat_trip["joueur_2"].unique().tolist()
+    joueurs_championnat_trip = list(set(j1_list + j2_list))
+    liste_joueurs_trip = joueurs_championnat_trip
 else:
     liste_joueurs_trip = liste_joueurs_complet
 
@@ -65,8 +61,8 @@ else:
 def calculer_stats_triplette(joueur_selectionne=None, partenaire1_selectionne=None, partenaire2_selectionne=None):
     stats = {j: {"Victoires": 0, "Défaites": 0, "Points_marques": 0, "Points_encaisses": 0, "Diff": 0, "Tôle_infligées": 0, "Tôle_encaissées": 0} for j in liste_joueurs_complet}
     
-    if not df_triplette.empty:  # df_triplette = résultats de la feuille doublette
-        for _, row in df_triplette.iterrows():
+    if not resultats_trip_df.empty:
+        for _, row in resultats_trip_df.iterrows():
             vainq1 = row["vainqueur1"]
             vainq2 = row["vainqueur2"]
             vainq3 = row["vainqueur3"]
@@ -141,18 +137,30 @@ def highlight_joueur(row):
 st.divider()
 mode = st.radio(
     "Mode de jeu",
-    ["🏆 Tournoi/Championnat", "🎲 Jeu libre"],
+    ["🎲 Jeu libre", "🏅 Championnat", "🏆 Tournoi"],
     horizontal=True
 )
 st.divider()
 
-############################
-# Mode tournoi/championnat #
-############################
-if mode == "🏆 Tournoi/Championnat":
+################
+# Mode tournoi #
+################
+if mode == "🏆 Tournoi":
 
     # Onglets de l'application
     tabs = st.tabs(["👥 Participants", "🎪 Tournoi", "➕ Saisie résultat", "📊 Confrontations", "🏆 Classement"])
+    st.write("")
+    st.image("images/WIP1.jpg", use_container_width=True)
+    st.write("")
+    st.write("# Je finis la section doublette et ensuite je m'en occupe 😉")
+
+####################
+# Mode championnat #
+####################
+if mode == "🏆 Championnat":
+
+    # Onglets de l'application
+    tabs = st.tabs(["👥 Participants", "🎪 Championnat", "➕ Saisie résultat", "📊 Confrontations", "🏆 Classement"])
     st.write("")
     st.image("images/WIP2.jpg", use_container_width=True)
     st.write("")

@@ -2,3 +2,4 @@
 gspread==6.2.1
 streamlit==1.43.0
 streamlit-extras==0.7.8
+networkx==3.4.2
