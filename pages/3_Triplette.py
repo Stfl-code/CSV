@@ -12,7 +12,7 @@ from utils import init_google_sheets
 # Affichage #
 #############
 st.set_page_config(page_title="Triplette", page_icon="👤👤👤")
-
+st.image("images/petanque_3.jpg", use_container_width=True)
 st.write("# Parties en triplette du club de pétanque de Vaux-sur-Seine")
 
 #######################

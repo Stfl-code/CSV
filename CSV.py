@@ -8,7 +8,7 @@ st.image(url_image, use_container_width=True)
 
 # Titre
 st.markdown("<h1 style='text-align: center;'>Menu principal</h1>", unsafe_allow_html=True)
-st.markdown("<h2>Veuillez sélectionner une page via le menu déroulant ci-dessous ou le menu latéral.</h2>", unsafe_allow_html=True)
+st.markdown("<h2>Sélectionner une page via le menu déroulant ci-dessous ou via le menu latéral.</h2>", unsafe_allow_html=True)
 
 # Liste des pages disponibles (correspond au nom des fichiers sans les préfixes numériques)
 pages = {

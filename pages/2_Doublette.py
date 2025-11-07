@@ -12,7 +12,7 @@ from utils import init_google_sheets
 # Affichage #
 #############
 st.set_page_config(page_title="Doublette", page_icon="👥")
-
+st.image("images/petanque_2.jpg", use_container_width=True)
 st.write("# Parties en doublette du club de pétanque de Vaux-sur-Seine")
 
 #######################

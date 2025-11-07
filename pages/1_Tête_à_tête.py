@@ -12,7 +12,7 @@ from utils import init_google_sheets
 # Affichage #
 #############
 st.set_page_config(page_title="Tête-à-tête", page_icon="👤")
-st.image("images/img_tournoi.png", use_container_width=True)
+st.image("images/petanque_1.jpg", use_container_width=True)
 st.write("# Parties en tête-à-tête du club de pétanque de Vaux-sur-Seine")
 
 #######################
@@ -550,22 +550,34 @@ if mode == "🏆 Tournoi":
     # ------------------------- #
     with tabs[4]:
         st.header("Classement du tournoi")
-        
+        st.subheader("Choisir un joueur pour afficher ses stats et le mettre en surbrillance dans le tableau")        
+
+        # Calcul des stats
         stats_tournoi = calculer_stats_tournoi()
-        
-        if all(s["Victoires"] == 0 and s["Défaites"] == 0 for s in stats_tournoi.values()):
-            st.info("Aucune partie terminée pour le moment")
-        else:
-            classement = pd.DataFrame(stats_tournoi).T
-            classement["Parties jouées"] = classement["Victoires"] + classement["Défaites"]
-            classement["%_Victoires"] = ((classement["Victoires"] / classement["Parties jouées"]) * 100).fillna(0).replace([float('inf'), -float('inf')], 0).round(0).astype(int).astype(str) + "%"
-            
-            classement = classement.sort_values(by=["Victoires", "Diff"], ascending=[False, False])
-            
-            classement = classement[["Parties jouées", "Victoires", "Défaites", "%_Victoires", "Points_marques", "Points_encaisses", "Diff"]]
-            classement.columns = ["J", "V", "D", "%V", "PM", "PE", "Diff"]
-            
-            st.dataframe(classement, use_container_width=True)
+
+        # Sélection du joueur à afficher
+        joueur = st.selectbox("Choix du joueur", options=liste_joueurs, key="joueur")
+
+        # Mise en forme des stats
+        classement = pd.DataFrame(stats_tournoi).T
+        classement["Parties jouées"] = classement["Victoires"] + classement["Défaites"]
+        classement["%_Victoires"] = ((classement["Victoires"] / classement["Parties jouées"]) * 100).fillna(0).replace([float('inf'), -float('inf')], 0).round(0).astype(int).astype(str) + "%"
+        classement = classement.sort_values(by=["Victoires", "Diff"], ascending=[False, False])
+        classement = classement[["Parties jouées", "Victoires", "Défaites", "%_Victoires", "Points_marques", "Points_encaisses", "Diff", "Tôle_infligées", "Tôle_encaissées"]]
+        classement.columns = ["Joué", "Victoires", "Défaites", "% Victoires", "Points Marqués", "Points Encaissés", "Différence de points", "Tôle infligées", "Tôle encaissées"]
+
+        # Afficher les principales métriques
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Parties jouées", classement.loc[joueur, "Joué"])
+        with col2:
+            st.metric("% Victoires", classement.loc[joueur, "% Victoires"])
+        with col3:
+            st.metric("Différence de points", classement.loc[joueur, "Différence de points"])
+
+        st.divider()
+        classement_styled = classement.style.apply(highlight_joueur, axis=1)
+        st.dataframe(classement_styled, use_container_width=True)
 
 ####################
 # Mode Championnat #
@@ -679,8 +691,13 @@ elif mode == "🏅 Championnat":
                 st.subheader("⚡ Parties à jouer")
                 st.write("")
                 st.write("")
-                for tour_num, groupe in parties_en_cours.groupby("tour n°"):
-                    st.markdown(f"### 🏁 {str(tour_num)}")
+
+                # Trier les tours par ordre numérique
+                parties_en_cours["tour_num"] = parties_en_cours["tour n°"].str.extract(r'(\d+)').astype(int)
+                parties_en_cours = parties_en_cours.sort_values("tour_num")
+
+                for tour_num, groupe in parties_en_cours.groupby("tour_num"):
+                    st.markdown(f"### 🏁 Tour {tour_num}")
                     for _, parties in groupe.iterrows():
                         st.info(f"🎯 **{parties['joueur_1']}** vs **{parties['joueur_2']}**")
             
@@ -691,8 +708,13 @@ elif mode == "🏅 Championnat":
 
             if not parties_termines.empty:
                 st.subheader("✅ Parties terminés")
-                for tour_num, groupe in parties_termines.groupby("tour n°"):
-                    st.markdown(f"### 🏁 {str(tour_num)}")
+
+                # Trier les tours par ordre numérique
+                parties_termines["tour_num"] = parties_termines["tour n°"].str.extract(r'(\d+)').astype(int)
+                parties_termines = parties_termines.sort_values("tour_num")
+
+                for tour_num, groupe in parties_termines.groupby("tour_num"):
+                    st.markdown(f"### 🏁 Tour {tour_num}")
                     for _, parties in groupe.iterrows():
                         st.info(f"🎯 **{parties['joueur_1']}** vs **{parties['joueur_2']}**")
 
@@ -700,7 +722,7 @@ elif mode == "🏅 Championnat":
             
             # Historique complet
             with st.expander("📋 Voir tous les matchs du championnat"):
-                st.dataframe(tournoi_tat_df, use_container_width=True)
+                st.dataframe(championnat_tat_df, use_container_width=True)
     
     # --------------------- #
     # --- Onglet Saisie --- #
@@ -756,7 +778,7 @@ elif mode == "🏅 Championnat":
                         
                         # Recharger les données du championnat
                         championnat_tat_rows = st.session_state.sheet_championnat_tat.get_all_records()
-                        st.session_state.championnat_tat_df = pd.DataFrame(tournoi_tat_rows)
+                        st.session_state.championnat_tat_df = pd.DataFrame(championnat_tat_rows)
                         
                         st.success("✅ Résultat enregistré !")
                         st.rerun()
@@ -791,24 +813,34 @@ elif mode == "🏅 Championnat":
     # ------------------------- #
     with tabs[4]:
         st.header("Classement du championnat")
+        st.subheader("Choisissez un joueur pour afficher ses stats et le mettre en surbrillance dans le tableau")
         
+        # Calcul des stats
         stats_championnat = calculer_stats_championnat()
-        
-        if all(s["Victoires"] == 0 and s["Défaites"] == 0 for s in stats_championnat.values()):
-            st.info("Aucune partie terminée pour le moment")
-        else:
-            classement = pd.DataFrame(stats_championnat).T
-            classement["Parties jouées"] = classement["Victoires"] + classement["Défaites"]
-            classement["%_Victoires"] = ((classement["Victoires"] / classement["Parties jouées"]) * 100).fillna(0).replace([float('inf'), -float('inf')], 0).round(0).astype(int).astype(str) + "%"
-            
-            classement = classement.sort_values(by=["Victoires", "Diff"], ascending=[False, False])
-            
-            classement = classement[["Parties jouées", "Victoires", "Défaites", "%_Victoires", "Points_marques", "Points_encaisses", "Diff"]]
-            classement.columns = ["J", "V", "D", "%V", "PM", "PE", "Diff"]
-            
-            st.dataframe(classement, use_container_width=True)
 
+        # Sélection du joueur à afficher
+        joueur = st.selectbox("Choix du joueur", options=liste_joueurs, key="joueur")
 
+        # Mise en forme des stats        
+        classement = pd.DataFrame(stats_championnat).T
+        classement["Parties jouées"] = classement["Victoires"] + classement["Défaites"]
+        classement["%_Victoires"] = ((classement["Victoires"] / classement["Parties jouées"]) * 100).fillna(0).replace([float('inf'), -float('inf')], 0).round(0).astype(int).astype(str) + "%"
+        classement = classement.sort_values(by=["Victoires", "Diff"], ascending=[False, False])
+        classement = classement[["Parties jouées", "Victoires", "Défaites", "%_Victoires", "Points_marques", "Points_encaisses", "Diff", "Tôle_infligées", "Tôle_encaissées"]]
+        classement.columns = ["Joué", "Victoires", "Défaites", "% Victoires", "Points Marqués", "Points Encaissés", "Différence de points", "Tôle infligées", "Tôle encaissées"]
+            
+        # Afficher les principales métriques
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Parties jouées", classement.loc[joueur, "Joué"])
+        with col2:
+            st.metric("% Victoires", classement.loc[joueur, "% Victoires"])
+        with col3:
+            st.metric("Différence de points", classement.loc[joueur, "Différence de points"])
+
+        st.divider()
+        classement_styled = classement.style.apply(highlight_joueur, axis=1)
+        st.dataframe(classement_styled, use_container_width=True)
 
 ##################
 # Mode Jeu libre #
