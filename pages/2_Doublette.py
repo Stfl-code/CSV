@@ -550,7 +550,7 @@ else:
                 adversaire1 = joueur_A1
                 adversaire2 = joueur_A2
 
-            resultats_doub.append_row([vainqueur1, vainqueur2, adversaire1, adversaire2, 13, score_perdant, date])
+            st.session_state.sheet_resultats_doub.append_row([vainqueur1, vainqueur2, adversaire1, adversaire2, 13, score_perdant, date])
             st.success("✅ Résultat enregistré !")
             st.rerun()
 

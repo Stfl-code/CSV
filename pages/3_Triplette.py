@@ -569,7 +569,7 @@ else:
                 adversaire1 = joueur_A1
                 adversaire2 = joueur_A2
                 adversaire3 = joueur_A3
-            resultats_trip.append_row([vainqueur1, vainqueur2, vainqueur3, adversaire1, adversaire2, adversaire3, 13, score_perdant, date])
+            st.session_state.sheet_resultats_trip.append_row([vainqueur1, vainqueur2, vainqueur3, adversaire1, adversaire2, adversaire3, 13, score_perdant, date])
             st.success("✅ Résultat enregistré !")
             st.rerun()
 
