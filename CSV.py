@@ -14,7 +14,8 @@ st.markdown("<h2>Sélectionner une page via le menu déroulant ci-dessous ou via
 pages = {
     "Tête-à-tête": "Tête à tête",
     "Doublette": "Doublette",
-    "Triplette": "Triplette"
+    "Triplette": "Triplette",
+    "Tir de précision": "Tir de précision" 
 }
 
 # Menu déroulant
