@@ -37,12 +37,13 @@ resultats_doub_df = pd.DataFrame(resultats_doub_rows)
 # Récupérer les joueurs participant au tournoi
 joueurs_tournoi_doub = []
 if not tournoi_doub_df.empty:
-    j1_list = tournoi_doub_df["equipe_1"].unique().tolist()
-    j2_list = tournoi_doub_df["equipe_2"].unique().tolist()
-    joueurs_tournoi_doub = list(set(j1_list + j2_list))
-    liste_joueurs_doub = joueurs_tournoi_doub
+    j1_list = tournoi_doub_df["equipe_1_joueur_1"].unique().tolist()
+    j2_list = tournoi_doub_df["equipe_1_joueur_2"].unique().tolist()
+    j3_list = tournoi_doub_df["equipe_2_joueur_1"].unique().tolist()
+    j4_list = tournoi_doub_df["equipe_2_joueur_2"].unique().tolist()
+    joueurs_tournoi_doub = list(set(j1_list + j2_list + j3_list + j4_list))
 else:
-    liste_joueurs_doub = liste_joueurs_complet
+    joueurs_tournoi_doub = liste_joueurs_complet
 
 # Récupérer les joueurs participant au championnat
 joueurs_championnat_doub = []
@@ -50,9 +51,8 @@ if not championnat_doub_df.empty:
     j1_list = championnat_doub_df["equipe_1"].unique().tolist()
     j2_list = championnat_doub_df["equipe_2"].unique().tolist()
     joueurs_championnat_doub = list(set(j1_list + j2_list))
-    liste_joueurs_doub = joueurs_championnat_doub
 else:
-    liste_joueurs_doub = liste_joueurs_complet
+    joueurs_championnat_doub = liste_joueurs_complet
 
 #############
 # Fonctions #
@@ -302,6 +302,61 @@ def calculer_stats_doublette(joueur_selectionne=None, partenaire_selectionne=Non
     
     return stats
 
+# Fonction pour calculer les stats en doublette (tournoi)
+###########################################################
+
+def calculer_stats_doublette_tournoi(joueur_selectionne=None, partenaire_selectionne=None):
+    stats_tournoi = {j: {"Victoires": 0, "Défaites": 0, "Points_marques": 0, "Points_encaisses": 0, "Diff": 0, "Tôle_infligées": 0, "Tôle_encaissées": 0} for j in joueurs_tournoi_doub}
+    
+    if not tournoi_doub_df.empty:
+        for _, row in tournoi_doub_df.iterrows():
+            vainq1 = row["vainqueur_1"]
+            vainq2 = row["vainqueur_2"]
+            adv1 = row["adversaire_1"]
+            adv2 = row["adversaire_2"]
+            score_v = row.get("score_vainqueur", 13)
+            score_p = row.get("score_adversaire", 0)
+            
+            # Filtrer selon le joueur et partenaire sélectionnés
+            if joueur_selectionne and partenaire_selectionne:
+                # Vérifier si cette partie concerne le joueur et son partenaire
+                if partenaire_selectionne != "Tous":
+                    # Cas spécifique : joueur + partenaire précis
+                    if not ((joueur_selectionne == vainq1 and partenaire_selectionne == vainq2) or
+                            (joueur_selectionne == vainq2 and partenaire_selectionne == vainq1) or
+                            (joueur_selectionne == adv1 and partenaire_selectionne == adv2) or
+                            (joueur_selectionne == adv2 and partenaire_selectionne == adv1)):
+                        continue  # Passer cette ligne si elle ne concerne pas cette paire
+                else:
+                    # Cas "Tous" : vérifier juste si le joueur a participé
+                    if joueur_selectionne not in [vainq1, vainq2, adv1, adv2]:
+                        continue
+            
+            # Mettre à jour les stats des vainqueurs
+            for vainqueur in [vainq1, vainq2]:
+                if vainqueur in stats_tournoi:
+                    stats_tournoi[vainqueur]["Victoires"] += 1
+                    stats_tournoi[vainqueur]["Points_marques"] += score_v
+                    stats_tournoi[vainqueur]["Points_encaisses"] += score_p
+                    if  score_p == 0:
+                        stats_tournoi[vainqueur]["Tôle_infligées"] += 1
+            
+            # Mettre à jour les stats des perdants
+            for perdant in [adv1, adv2]:
+                if perdant in stats_tournoi:
+                    stats_tournoi[perdant]["Défaites"] += 1
+                    stats_tournoi[perdant]["Points_marques"] += score_p
+                    stats_tournoi[perdant]["Points_encaisses"] += score_v
+                    if score_p == 0:
+                        stats_tournoi[perdant]["Tôle_encaissées"] += 1
+    
+    # Calculer la différence de points
+    for j in stats_tournoi:
+        stats_tournoi[j]["Diff"] = stats_tournoi[j]["Points_marques"] - stats_tournoi[j]["Points_encaisses"]
+    
+    return stats_tournoi
+
+
 # Fonction pour calculer les stats en doublette (championnat)
 #############################################################
 
@@ -368,43 +423,87 @@ if mode == "🏆 Tournoi":
     # --------------------------- # 
     # --- Onglet Participants --- #
     # --------------------------- #
-    with tabs[0]:  # Onglet "Génération matchs mêlée"
+    with tabs[0]:
         st.header("🎲 Concours en doublette à la mêlée")
+    
+        # ================================================
+        # RECONSTRUCTION DES HISTORIQUES DEPUIS LE SHEET
+        # ================================================
+        def reconstruire_historiques():
+            """Reconstruit les historiques depuis les matchs enregistrés"""
+            historique_partenaires = {}
+            historique_adversaires = {}
         
-        # Initialiser les historiques dans session_state
-        if 'historique_partenaires_melee' not in st.session_state:
-            st.session_state.historique_partenaires_melee = {}
+            if not tournoi_doub_df.empty:
+                for _, row in tournoi_doub_df.iterrows():
+                    # Récupérer les 4 joueurs
+                    j1 = row.get("equipe_1_joueur_1")
+                    j2 = row.get("equipe_1_joueur_2")
+                    j3 = row.get("equipe_2_joueur_1")
+                    j4 = row.get("equipe_2_joueur_2")
+                
+                    # Ignorer les lignes incomplètes
+                    if not all([j1, j2, j3, j4]):
+                        continue
+                
+                    # Partenaires
+                    for ja, jb in [(j1, j2), (j3, j4)]:
+                        if ja not in historique_partenaires:
+                            historique_partenaires[ja] = {}
+                        if jb not in historique_partenaires:
+                            historique_partenaires[jb] = {}
+                    
+                        historique_partenaires[ja][jb] = historique_partenaires[ja].get(jb, 0) + 1
+                        historique_partenaires[jb][ja] = historique_partenaires[jb].get(ja, 0) + 1
+                
+                    # Adversaires
+                    for ja in [j1, j2]:
+                        for jb in [j3, j4]:
+                            if ja not in historique_adversaires:
+                                historique_adversaires[ja] = {}
+                            if jb not in historique_adversaires:
+                                historique_adversaires[jb] = {}
+                        
+                            historique_adversaires[ja][jb] = historique_adversaires[ja].get(jb, 0) + 1
+                            historique_adversaires[jb][ja] = historique_adversaires[jb].get(ja, 0) + 1
         
-        if 'historique_adversaires_melee' not in st.session_state:
-            st.session_state.historique_adversaires_melee = {}
-        
-        # Sélection des joueurs disponibles
+            return historique_partenaires, historique_adversaires
+    
+        # Reconstruire les historiques depuis les données réelles
+        historique_partenaires, historique_adversaires = reconstruire_historiques()
+    
+        # Sauvegarder dans session_state
+        st.session_state.historique_partenaires_melee = historique_partenaires
+        st.session_state.historique_adversaires_melee = historique_adversaires
+    
+        # ================================================
+        # SÉLECTION DES JOUEURS
+        # ================================================
         st.subheader("👥 Joueurs disponibles pour ce tour")
-        
-        # Checkbox pour sélectionner les joueurs
-        if 'joueurs_dispo_melee' not in st.session_state:
-            st.session_state.joueurs_dispo_melee = liste_joueurs_complet.copy()
-        
+    
         col1, col2 = st.columns(2)
         mid = len(liste_joueurs_complet) // 2
-        
+    
         joueurs_selectionnes_tour = []
-        
+    
         with col1:
             for j in liste_joueurs_complet[:mid]:
                 if st.checkbox(j, value=True, key=f"melee_{j}"):
                     joueurs_selectionnes_tour.append(j)
-        
+
         with col2:
             for j in liste_joueurs_complet[mid:]:
                 if st.checkbox(j, value=True, key=f"melee_{j}"):
                     joueurs_selectionnes_tour.append(j)
-        
+
         st.divider()
-        
+    
+        # ================================================
+        # VALIDATION ET GÉNÉRATION
+        # ================================================
         nb_joueurs = len(joueurs_selectionnes_tour)
         nb_matchs_possible = nb_joueurs // 4
-        
+    
         if nb_joueurs < 4:
             st.warning("⚠️ Il faut au moins 4 joueurs pour générer des matchs")
         elif nb_joueurs % 4 != 0:
@@ -412,7 +511,7 @@ if mode == "🏆 Tournoi":
             st.info(f"💡 Déselectionne {nb_joueurs % 4} joueur(s) ou ajoute {4 - (nb_joueurs % 4)} joueur(s)")
         else:
             st.success(f"✅ {nb_joueurs} joueurs sélectionnés → {nb_matchs_possible} match(s) possible(s)")
-            
+
             # Slider pour choisir le nombre de matchs
             nb_matchs_generer = st.slider(
                 "Nombre de matchs à générer",
@@ -421,76 +520,222 @@ if mode == "🏆 Tournoi":
                 nb_matchs_possible,
                 help="Tous les joueurs sélectionnés joueront si tu choisis le maximum"
             )
-            
+        
             st.divider()
-            
-            # Afficher les statistiques actuelles
+        
+            # ================================================
+            # STATISTIQUES ACTUELLES
+            # ================================================
             with st.expander("📊 Statistiques des appariements"):
                 st.write("**Partenaires déjà formés :**")
+                partenaires_affiches = False
                 for j in joueurs_selectionnes_tour:
-                    partenaires = st.session_state.historique_partenaires_melee.get(j, {})
+                    partenaires = historique_partenaires.get(j, {})
                     if partenaires:
-                        st.write(f"{j}: {', '.join([f'{p} ({n}x)' for p, n in partenaires.items()])}")
-                
+                        st.write(f"{j} : {', '.join([f'{p} ({n}x)' for p, n in partenaires.items()])}")
+                        partenaires_affiches = True
+            
+                if not partenaires_affiches:
+                    st.info("Aucun partenariat enregistré pour le moment")
+            
                 st.divider()
-                
+            
                 st.write("**Adversaires déjà affrontés :**")
+                adversaires_affiches = False
                 for j in joueurs_selectionnes_tour:
-                    adversaires = st.session_state.historique_adversaires_melee.get(j, {})
+                    adversaires = historique_adversaires.get(j, {})
                     if adversaires:
-                        adversaires_tries = sorted(adversaires.items(), key=lambda x: x[1], reverse=True)[:5]
+                        adversaires_tries = sorted(adversaires.items(), key=lambda x: x[1], reverse=True)
                         st.write(f"{j}: {', '.join([f'{p} ({n}x)' for p, n in adversaires_tries])}")
+                        adversaires_affiches = True
             
+                if not adversaires_affiches:
+                    st.info("Aucun affrontement enregistré pour le moment")
+        
             st.divider()
-            
-            # Bouton pour générer
+        
+            # ================================================
+            # GÉNÉRATION DES MATCHS
+            # ================================================
             if st.button("🎲 Générer les appariements", type="primary", use_container_width=True):
                 matchs, erreur = generer_doublette_melee(
                     joueurs_selectionnes_tour,
-                    st.session_state.historique_partenaires_melee,
-                    st.session_state.historique_adversaires_melee,
+                    historique_partenaires,
+                    historique_adversaires,
                     nb_matchs_generer
                 )
-                
+            
                 if erreur and not matchs:
                     st.error(f"❌ {erreur}")
                 else:
                     if erreur:
                         st.warning(f"⚠️ {erreur}")
-                    
+                
                     st.success(f"✅ {len(matchs)} match(s) généré(s) !")
-                    
+                
                     # Afficher les matchs
                     st.subheader("🎯 Matchs générés")
-                    
+                
+                    # ✅ ENREGISTRER TOUS LES MATCHS D'UN COUP
                     for idx, match in enumerate(matchs, 1):
                         j1, j2, j3, j4 = match
-                        
+                    
                         col_match1, col_match2 = st.columns(2)
-                        
+                    
                         with col_match1:
                             st.info(f"**Match {idx}**")
-                        
+                    
                         with col_match2:
                             st.write(f"🔵 **{j1}** & **{j2}**  vs  🔴 **{j3}** & **{j4}**")
-                        
-                        # Mettre à jour les historiques
-                        mettre_a_jour_historiques(
-                            match,
-                            st.session_state.historique_partenaires_melee,
-                            st.session_state.historique_adversaires_melee
-                        )
-                            
-                        # Enregistrer dans le spreadsheet
-                        st.session_state.sheet_tournoi_doub.append_row([j1, j2, j3, j4, "à jouer", "", ""])
-                            
-                        st.success(f"Match {idx} enregistré !")
-                        #st.rerun()
-                            
                     
-    st.image("images/WIP1.jpg", use_container_width=True)
-    st.write("")
-    st.write("# La mise au point d'un algorythme de création des équipes à la mélée va prendre un peu de temps 😉")
+                        # ✅ Enregistrer dans le spreadsheet
+                        st.session_state.sheet_tournoi_doub.append_row([j1, j2, j3, j4, "à jouer", "", ""])
+                
+                    st.success(f"✅ Tous les matchs ont été enregistrés !")
+                    st.balloons()
+                
+                    # ✅ RECHARGER LES DONNÉES
+                    tournoi_doub_rows = st.session_state.sheet_tournoi_doub.get_all_records()
+                    tournoi_doub_df = pd.DataFrame(tournoi_doub_rows)
+                
+                    # ✅ RECONSTRUIRE LES HISTORIQUES
+                    historique_partenaires, historique_adversaires = reconstruire_historiques()
+                    st.session_state.historique_partenaires_melee = historique_partenaires
+                    st.session_state.historique_adversaires_melee = historique_adversaires
+                
+                    st.rerun()
+
+    # --------------------- #
+    # --- Onglet Saisie --- #
+    # --------------------- #
+    with tabs[2]:
+        st.header("Saisie d'un résultat")
+        
+        # Récupérer les matchs à jouer
+        matchs_disponibles = []
+        if not tournoi_doub_df.empty:
+            matchs_a_jouer = tournoi_doub_df[tournoi_doub_df["statut"] == "à jouer"]
+            for _, match in matchs_a_jouer.iterrows():
+                matchs_disponibles.append(f"{match['equipe_1_joueur_1']} et {match['equipe_1_joueur_2']} vs {match['equipe_2_joueur_1']} et {match['equipe_2_joueur_2']}")
+        
+        if not matchs_disponibles:
+            st.warning("⚠️ Aucun match en attente. Va dans l'onglet 🎪 tournoi pour en générer !")
+        else:
+            match_selectionne = st.selectbox("Sélectionne le match", matchs_disponibles)
+            
+            if match_selectionne:
+                e1, e2 = match_selectionne.replace(" vs ", "|").split("|")
+                e1_j1, e1_j2 = e1.split(" et ")   # joueurs de l'équipe 1
+                e2_j1, e2_j2 = e2.split(" et ")   # joueurs de l'équipe 2
+                
+                st.divider()
+                
+                with st.form("saisie_resultat_championnat"):
+                    vainqueur = st.radio("Qui a gagné ?", [e1, e2])
+                    if vainqueur == e1:
+                        vainqueur1 = e1_j1
+                        vainqueur2 = e1_j2
+                        perdant1 = e2_j1
+                        perdant2 = e2_j2 
+                    else: 
+                        vainqueur1 = e2_j1
+                        vainqueur2 = e2_j2
+                        perdant1 = e1_j1
+                        perdant2 = e1_j2 
+                    score_vainqueur = 13
+                    score_perdant = st.number_input("Score du perdant", min_value=0, max_value=12, value=0)
+                    date = pd.to_datetime('now').strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    st.caption(f"Résultat : **{vainqueur}** 13 - {score_perdant} **{e2 if vainqueur == e1 else e1}**")
+                    
+                    submitted = st.form_submit_button("✅ Enregistrer", use_container_width=True)
+                
+                if submitted:
+                    # Trouver la ligne du match dans le sheet
+                    all_data = st.session_state.sheet_tournoi_doub.get_all_values()
+                    row_idx = None
+                    
+                    for i, row in enumerate(all_data[1:], start=2):  # Skip header, start at row 2
+                        equipe1_match = {row[0], row[1]}
+                        equipe2_match = {row[2], row[3]}
+
+                        equipe1_sel = {e1_j1, e1_j2}
+                        equipe2_sel = {e2_j1, e2_j2}
+
+                        if (equipe1_match == equipe1_sel and equipe2_match == equipe2_sel) or (equipe1_match == equipe2_sel and equipe2_match == equipe1_sel):
+                            if row[4] == "à jouer":  # Vérifier que c'est bien un match à jouer
+                                row_idx = i
+                                break
+                    
+                    if row_idx:
+                        # Mettre à jour le tournoi
+                        st.session_state.sheet_tournoi_doub.update(f"E{row_idx}:L{row_idx}", [["terminé", vainqueur1, vainqueur2, perdant1, perdant2, score_vainqueur, score_perdant, date]])
+                        
+                        # Recharger les données du tournoi
+                        tournoi_doub_rows = st.session_state.sheet_tournoi_doub.get_all_records()
+                        st.session_state.tournoi_doub_df = pd.DataFrame(tournoi_doub_rows)
+                        
+                        st.success("✅ Résultat enregistré !")
+                        st.rerun()
+                    else:
+                        st.error("❌ Erreur : impossible de trouver le match")
+
+    # ----------------------------- #
+    # --- Onglet Confrontations --- #
+    # ----------------------------- #
+    with tabs[3]:
+        st.header("Tableau des confrontations")
+        
+        if tournoi_doub_df.empty:
+            st.info("Aucun résultat enregistré pour le moment")
+        else:
+            recap = pd.DataFrame("", index=joueurs_tournoi_doub, columns=joueurs_tournoi_doub)
+            
+            for _, row in tournoi_doub_df.iterrows():
+                vainq = [row["vainqueur_1"], row["vainqueur_2"]]
+                adv = [row["adversaire_1"], row["adversaire_2"]]
+                score_v = row.get("score_vainqueur", 13)
+                score_a = row.get("score_adversaire", row.get("score_adv", 0))
+                
+                for jv in vainq:
+                    for jp in adv:
+                        jv, jp = str(jv).strip(), str(jp).strip()
+                        if jv in joueurs_tournoi_doub and jp in joueurs_tournoi_doub:
+                            cellule_actuelle = recap.loc[jv, jp]
+                            nouveau_score = f"{score_v}-{score_a}"
+
+                            if cellule_actuelle == "":
+                                recap.loc[jv, jp] = nouveau_score
+                                recap.loc[jp, jv] = f"{score_a}-{score_v}"
+                            else:
+                                recap.loc[jv, jp] = f"{cellule_actuelle}, {nouveau_score}"
+                                recap.loc[jp, jv] = f"{recap.loc[jp, jv]}, {score_a}-{score_v}"
+			    #recap.loc[jv, jp] = f"{score_v}-{score_a}"
+                            #recap.loc[jp, jv] = f"{score_a}-{score_v}" 
+            
+            st.dataframe(recap, use_container_width=True)
+
+    # ------------------------- #
+    # --- Onglet Classement --- #
+    # ------------------------- #
+    with tabs[4]:
+        st.header("Classement du tournoi")
+        
+        stats_tournoi = calculer_stats_doublette_tournoi()
+        
+        if all(s["Victoires"] == 0 and s["Défaites"] == 0 for s in stats_tournoi.values()):
+            st.info("Aucune partie terminée pour le moment")
+        else:
+            classement = pd.DataFrame(stats_tournoi).T
+            classement["Parties jouées"] = classement["Victoires"] + classement["Défaites"]
+            classement["%_Victoires"] = ((classement["Victoires"] / classement["Parties jouées"]) * 100).fillna(0).replace([float('inf'), -float('inf')], 0).round(0).astype(int).astype(str) + "%"
+            
+            classement = classement.sort_values(by=["Victoires", "Diff"], ascending=[False, False])
+            
+            classement = classement[["Parties jouées", "Victoires", "Défaites", "%_Victoires", "Points_marques", "Points_encaisses", "Diff"]]
+            classement.columns = ["J", "V", "D", "%V", "PM", "PE", "Diff"]
+            
+            st.dataframe(classement, use_container_width=True)
 
 ####################
 # Mode Championnat #
@@ -633,7 +878,7 @@ elif mode == "🏅 Championnat":
         else:
             # Calculs nécéssaires
             nb_total = len(joueurs_championnat_doub) * (len(joueurs_championnat_doub) - 1) // 2
-            nb_parties_tour = round(len(liste_joueurs_doub) // 2)
+            nb_parties_tour = round(len(joueurs_championnat_doub) // 2)
             nb_joues = len(championnat_doub_df[championnat_doub_df["statut"] == "terminé"]) if not championnat_doub_df.empty else 0
             nb_en_cours = len(championnat_doub_df[championnat_doub_df["statut"] == "à jouer"]) if not championnat_doub_df.empty else 0
             
@@ -734,7 +979,7 @@ elif mode == "🏅 Championnat":
                         
                         # Recharger les données du championnat
                         championnat_doub_rows = st.session_state.sheet_championnat_doub.get_all_records()
-                        st.session_state.championnat_doub_df = pd.DataFrame(tournoi_doub_rows)
+                        st.session_state.championnat_doub_df = pd.DataFrame(championnat_doub_rows)
                         
                         st.success("✅ Résultat enregistré !")
                         st.rerun()
@@ -750,7 +995,7 @@ elif mode == "🏅 Championnat":
         if championnat_doub_df.empty:
             st.info("Aucun résultat enregistré pour le moment")
         else:
-            recap = pd.DataFrame("", index=liste_joueurs_doub, columns=liste_joueurs_doub)
+            recap = pd.DataFrame("", index=joueurs_championnat_doub, columns=joueurs_championnat_doub)
             
             for _, row in championnat_doub_df.iterrows():
                 vainq = row["vainqueur"]
@@ -758,7 +1003,7 @@ elif mode == "🏅 Championnat":
                 score_v = row.get("score_vainqueur", 13)
                 score_a = row.get("score_adversaire", row.get("score_adv", 0))
                 
-                if vainq in liste_joueurs_doub and adv in liste_joueurs_doub:
+                if vainq in joueurs_championnat_doub and adv in joueurs_championnat_doub:
                     recap.loc[vainq, adv] = f"{score_v}-{score_a}"
                     recap.loc[adv, vainq] = f"{score_a}-{score_v}"
             
