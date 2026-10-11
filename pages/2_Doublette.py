@@ -3,7 +3,7 @@ import gspread
 import pandas as pd
 import random
 import networkx as nx
-import itertools
+from itertools import combinations
 import sys
 sys.path.append('..')  # Pour importer depuis la racine
 from utils import init_google_sheets
@@ -57,6 +57,164 @@ else:
 #############
 # Fonctions #
 #############
+
+# Fonction pour générer les appariements complet du tournoi à la mélée
+######################################################################
+def generer_doublette_melee(joueurs_liste, historique_partenaires, historique_adversaires, nb_matchs_generer=None):
+    """
+    Génère des appariements pour un concours de doublette à la mélée
+    
+    Args:
+        joueurs_liste: Liste des joueurs disponibles
+        historique_partenaires: dict {joueur: {partenaire: nb_fois}}
+        historique_adversaires: dict {joueur: {adversaire: nb_fois}}
+        nb_matchs_generer: Nombre de matchs à générer (None = maximum possible)
+    
+    Returns:
+        Liste de matchs [[j1, j2, j3, j4], ...] ou None si impossible
+    """
+    
+    n = len(joueurs_liste)
+    
+    # Vérifier qu'on a un nombre pair de joueurs
+    if n % 4 != 0:
+        return None, "Le nombre de joueurs doit être un multiple de 4"
+    
+    if nb_matchs_generer is None:
+        nb_matchs_generer = n // 4  # Tous les joueurs jouent
+    
+    # Créer un graphe pour les paires possibles
+    G = nx.Graph()
+    G.add_nodes_from(joueurs_liste)
+    
+    # Ajouter des arêtes pour les paires possibles (pas encore joué ensemble OU moins de 2 fois)
+    for i, j in combinations(joueurs_liste, 2):
+        nb_fois_partenaires = historique_partenaires.get(i, {}).get(j, 0)
+        
+        # Contrainte : pas plus de 1 fois partenaire
+        if nb_fois_partenaires < 1:
+            G.add_edge(i, j, weight=1000 - nb_fois_partenaires)  # Poids élevé pour ceux qui n'ont jamais joué ensemble
+    
+    # Trouver un matching parfait (paires de partenaires)
+    try:
+        matching = nx.max_weight_matching(G, maxcardinality=True)
+    except:
+        return None, "Impossible de créer des paires avec les contraintes actuelles"
+    
+    if len(matching) < nb_matchs_generer * 2:
+        return None, f"Pas assez de paires possibles (besoin de {nb_matchs_generer * 2}, trouvé {len(matching)})"
+    
+    # Convertir le matching en liste de paires
+    paires = list(matching)
+    random.shuffle(paires)
+    
+    # Sélectionner les paires qui vont jouer
+    paires_selectionnees = paires[:nb_matchs_generer * 2]
+    
+    # Créer les matchs en appariant les paires entre elles
+    matchs = []
+    joueurs_deja_apparies = set()
+    
+    # Trier les paires par priorité (favoriser ceux qui ne se sont pas affrontés)
+    def score_match(paire1, paire2):
+        """Calcule un score pour un match (plus élevé = meilleur)"""
+        j1, j2 = paire1
+        j3, j4 = paire2
+        
+        score = 0
+        
+        # Vérifier les confrontations précédentes
+        for ja in [j1, j2]:
+            for jb in [j3, j4]:
+                nb_fois = historique_adversaires.get(ja, {}).get(jb, 0)
+                
+                # Contrainte : pas plus de 2 fois adversaire
+                if nb_fois >= 2:
+                    return -1000  # Score très bas, à éviter
+                
+                # Favoriser ceux qui ne se sont jamais affrontés
+                score += (2 - nb_fois) * 10
+        
+        return score
+    
+    # Essayer de créer les matchs
+    tentatives = 0
+    max_tentatives = 100
+    
+    while len(matchs) < nb_matchs_generer and tentatives < max_tentatives:
+        tentatives += 1
+        
+        # Trouver deux paires disponibles
+        paires_disponibles = [p for p in paires_selectionnees 
+                             if p[0] not in joueurs_deja_apparies 
+                             and p[1] not in joueurs_deja_apparies]
+        
+        if len(paires_disponibles) < 2:
+            break
+        
+        # Trouver le meilleur appariement
+        meilleur_score = -10000
+        meilleure_combinaison = None
+        
+        for i in range(len(paires_disponibles)):
+            for j in range(i + 1, len(paires_disponibles)):
+                paire1 = paires_disponibles[i]
+                paire2 = paires_disponibles[j]
+                
+                score = score_match(paire1, paire2)
+                
+                if score > meilleur_score:
+                    meilleur_score = score
+                    meilleure_combinaison = (paire1, paire2)
+        
+        if meilleure_combinaison is None or meilleur_score < 0:
+            # Pas de bonne combinaison trouvée
+            break
+        
+        paire1, paire2 = meilleure_combinaison
+        
+        # Créer le match
+        match = [paire1[0], paire1[1], paire2[0], paire2[1]]
+        matchs.append(match)
+        
+        # Marquer les joueurs comme appariés
+        joueurs_deja_apparies.add(paire1[0])
+        joueurs_deja_apparies.add(paire1[1])
+        joueurs_deja_apparies.add(paire2[0])
+        joueurs_deja_apparies.add(paire2[1])
+    
+    if len(matchs) < nb_matchs_generer:
+        return matchs, f"Seulement {len(matchs)} matchs générés sur {nb_matchs_generer} demandés"
+    
+    return matchs, None
+
+# Mise à jour de l'historique des appariements à la mélée
+#########################################################
+def mettre_a_jour_historiques(match, historique_partenaires, historique_adversaires):
+    """Met à jour les historiques après un match"""
+    j1, j2, j3, j4 = match
+    
+    # Partenaires
+    for ja, jb in [(j1, j2), (j3, j4)]:
+        if ja not in historique_partenaires:
+            historique_partenaires[ja] = {}
+        if jb not in historique_partenaires:
+            historique_partenaires[jb] = {}
+        
+        historique_partenaires[ja][jb] = historique_partenaires[ja].get(jb, 0) + 1
+        historique_partenaires[jb][ja] = historique_partenaires[jb].get(ja, 0) + 1
+    
+    # Adversaires
+    for ja in [j1, j2]:
+        for jb in [j3, j4]:
+            if ja not in historique_adversaires:
+                historique_adversaires[ja] = {}
+            if jb not in historique_adversaires:
+                historique_adversaires[jb] = {}
+            
+            historique_adversaires[ja][jb] = historique_adversaires[ja].get(jb, 0) + 1
+            historique_adversaires[jb][ja] = historique_adversaires[jb].get(ja, 0) + 1
+
 
 # Fonction pour générer les appariements complet du championnat
 ###############################################################
@@ -206,6 +364,130 @@ if mode == "🏆 Tournoi":
     # Onglets de l'application
     tabs = st.tabs(["👥 Participants", "🎪 Tournoi", "➕ Saisie résultat", "📊 Confrontations", "🏆 Classement"])
     st.write("")
+
+    # --------------------------- # 
+    # --- Onglet Participants --- #
+    # --------------------------- #
+    with tabs[0]:  # Onglet "Génération matchs mêlée"
+        st.header("🎲 Concours en doublette à la mêlée")
+        
+        # Initialiser les historiques dans session_state
+        if 'historique_partenaires_melee' not in st.session_state:
+            st.session_state.historique_partenaires_melee = {}
+        
+        if 'historique_adversaires_melee' not in st.session_state:
+            st.session_state.historique_adversaires_melee = {}
+        
+        # Sélection des joueurs disponibles
+        st.subheader("👥 Joueurs disponibles pour ce tour")
+        
+        # Checkbox pour sélectionner les joueurs
+        if 'joueurs_dispo_melee' not in st.session_state:
+            st.session_state.joueurs_dispo_melee = liste_joueurs_complet.copy()
+        
+        col1, col2 = st.columns(2)
+        mid = len(liste_joueurs_complet) // 2
+        
+        joueurs_selectionnes_tour = []
+        
+        with col1:
+            for j in liste_joueurs_complet[:mid]:
+                if st.checkbox(j, value=True, key=f"melee_{j}"):
+                    joueurs_selectionnes_tour.append(j)
+        
+        with col2:
+            for j in liste_joueurs_complet[mid:]:
+                if st.checkbox(j, value=True, key=f"melee_{j}"):
+                    joueurs_selectionnes_tour.append(j)
+        
+        st.divider()
+        
+        nb_joueurs = len(joueurs_selectionnes_tour)
+        nb_matchs_possible = nb_joueurs // 4
+        
+        if nb_joueurs < 4:
+            st.warning("⚠️ Il faut au moins 4 joueurs pour générer des matchs")
+        elif nb_joueurs % 4 != 0:
+            st.warning(f"⚠️ Le nombre de joueurs doit être un multiple de 4 (actuellement {nb_joueurs})")
+            st.info(f"💡 Déselectionne {nb_joueurs % 4} joueur(s) ou ajoute {4 - (nb_joueurs % 4)} joueur(s)")
+        else:
+            st.success(f"✅ {nb_joueurs} joueurs sélectionnés → {nb_matchs_possible} match(s) possible(s)")
+            
+            # Slider pour choisir le nombre de matchs
+            nb_matchs_generer = st.slider(
+                "Nombre de matchs à générer",
+                1,
+                nb_matchs_possible,
+                nb_matchs_possible,
+                help="Tous les joueurs sélectionnés joueront si tu choisis le maximum"
+            )
+            
+            st.divider()
+            
+            # Afficher les statistiques actuelles
+            with st.expander("📊 Statistiques des appariements"):
+                st.write("**Partenaires déjà formés :**")
+                for j in joueurs_selectionnes_tour:
+                    partenaires = st.session_state.historique_partenaires_melee.get(j, {})
+                    if partenaires:
+                        st.write(f"{j}: {', '.join([f'{p} ({n}x)' for p, n in partenaires.items()])}")
+                
+                st.divider()
+                
+                st.write("**Adversaires déjà affrontés :**")
+                for j in joueurs_selectionnes_tour:
+                    adversaires = st.session_state.historique_adversaires_melee.get(j, {})
+                    if adversaires:
+                        adversaires_tries = sorted(adversaires.items(), key=lambda x: x[1], reverse=True)[:5]
+                        st.write(f"{j}: {', '.join([f'{p} ({n}x)' for p, n in adversaires_tries])}")
+            
+            st.divider()
+            
+            # Bouton pour générer
+            if st.button("🎲 Générer les appariements", type="primary", use_container_width=True):
+                matchs, erreur = generer_doublette_melee(
+                    joueurs_selectionnes_tour,
+                    st.session_state.historique_partenaires_melee,
+                    st.session_state.historique_adversaires_melee,
+                    nb_matchs_generer
+                )
+                
+                if erreur and not matchs:
+                    st.error(f"❌ {erreur}")
+                else:
+                    if erreur:
+                        st.warning(f"⚠️ {erreur}")
+                    
+                    st.success(f"✅ {len(matchs)} match(s) généré(s) !")
+                    
+                    # Afficher les matchs
+                    st.subheader("🎯 Matchs générés")
+                    
+                    for idx, match in enumerate(matchs, 1):
+                        j1, j2, j3, j4 = match
+                        
+                        col_match1, col_match2 = st.columns(2)
+                        
+                        with col_match1:
+                            st.info(f"**Match {idx}**")
+                        
+                        with col_match2:
+                            st.write(f"🔵 **{j1}** & **{j2}**  vs  🔴 **{j3}** & **{j4}**")
+                        
+                        # Mettre à jour les historiques
+                        mettre_a_jour_historiques(
+                            match,
+                            st.session_state.historique_partenaires_melee,
+                            st.session_state.historique_adversaires_melee
+                        )
+                            
+                        # Enregistrer dans le spreadsheet
+                        st.session_state.sheet_tournoi_doub.append_row([j1, j2, j3, j4, "à jouer", "", ""])
+                            
+                        st.success(f"Match {idx} enregistré !")
+                        #st.rerun()
+                            
+                    
     st.image("images/WIP1.jpg", use_container_width=True)
     st.write("")
     st.write("# La mise au point d'un algorythme de création des équipes à la mélée va prendre un peu de temps 😉")

@@ -3,6 +3,7 @@ import gspread
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 import sys
 sys.path.append('..')  # Pour importer depuis la racine
 from utils import init_google_sheets
@@ -138,44 +139,106 @@ else:
         # ==========================================
         st.subheader("📈 Radar – Moyenne par atelier")
 
+        # Calculer les moyennes par atelier
         moyens_ateliers = [
             np.mean([st.session_state.resultats[f"Atelier {i}"][d] for d in distances])
             for i in range(1, 6)
         ]
 
-        angles = np.linspace(0, 2 * np.pi, 5, endpoint=False)
-        moyens_ateliers = np.concatenate((moyens_ateliers, [moyens_ateliers[0]]))
-        angles = np.concatenate((angles, [angles[0]]))
+        # Catégories (ateliers)
+        categories = [f"Atelier {i}" for i in range(1, 6)]
 
-        fig = plt.figure(figsize=(6,6))
-        ax = plt.subplot(111, polar=True)
-        ax.plot(angles, moyens_ateliers)
-        ax.fill(angles, moyens_ateliers, alpha=0.3)
-        ax.set_xticks(angles[:-1])
-        ax.set_xticklabels([f"Atelier {i}" for i in range(1, 6)])
-        st.pyplot(fig)
+        # Créer le graphique radar avec Plotly
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatterpolar(
+            r=moyens_ateliers,
+            theta=categories,
+            fill='toself',
+            name='Moyenne',
+            line=dict(color='#1f77b4', width=0),
+            fillcolor='rgba(31, 119, 180, 0.3)'
+        ))
+
+        # Configuration pour pentagone et échelle fixe 0-5
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 5],  
+                    tickmode='linear',
+                    tick0=0,
+                    dtick=1,  # Graduations tous les 1
+                    showline=True,
+                    gridcolor='lightgray',
+                    linewidth=1
+                ),
+                angularaxis=dict(
+                    gridcolor='lightgray',
+                    linecolor='gray',
+                    linewidth=1, 
+                    rotation=90
+                ),
+                gridshape='linear'
+            ),
+            showlegend=False,
+            height=500,
+            margin=dict(l=80, r=80, t=50, b=50)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
 
         # ==========================================
         # GRAPHIQUE RADAR : MOYENNE par DISTANCE
         # ==========================================
         st.subheader("📈 Radar – Moyenne par distance")
 
+
         moyens_distances = [
-            np.mean([st.session_state.resultats[f"Atelier {i}"][d] for i in range(1, 6)])
+            np.mean(st.session_state.resultats[f"{d}"])
             for d in distances
         ]
 
-        angles2 = np.linspace(0, 2 * np.pi, 4, endpoint=False)
-        moyens_distances = np.concatenate((moyens_distances, [moyens_distances[0]]))
-        angles2 = np.concatenate((angles2, [angles2[0]]))
+        # Catégories (distances)
+        categories = [f"{d}" for d in distances]
 
-        fig2 = plt.figure(figsize=(6,6))
-        ax2 = plt.subplot(111, polar=True)
-        ax2.plot(angles2, moyens_distances)
-        ax2.fill(angles2, moyens_distances, alpha=0.3)
-        ax2.set_xticks(angles2[:-1])
-        ax2.set_xticklabels(distances)
-        st.pyplot(fig2)
+        # Créer le graphique radar avec Plotly
+        fig2 = go.Figure()
+
+        fig2.add_trace(go.Scatterpolar(
+            r=moyens_distances,
+            theta=categories,
+            fill='toself',
+            name='Moyenne',
+            line=dict(color='#1f77b4', width=0),
+            fillcolor='rgba(31, 119, 180, 0.3)'
+        ))
+
+        fig2.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 5],
+                    tickmode='linear',
+                    tick0=0,
+                    dtick=1,
+                    showline=True,
+                    gridcolor='lightgray',
+                    linewidth=1
+                ),
+                angularaxis=dict(
+                    gridcolor='lightgray',
+                    linecolor='gray',
+                    linewidth=1
+                ),
+                gridshape='linear'
+            ),
+            showlegend=False,
+            height=500, 
+            margin=dict(l=80, r=80, t=50, b=50)
+        ) 
+
+        st.plotly_chart(fig2, use_container_width=True)
 
 
     # Bouton pour recommencer

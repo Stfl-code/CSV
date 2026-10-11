@@ -60,7 +60,7 @@ else:
 # Fonction pour calculer les stats du tournoi actuel
 ####################################################
 def calculer_stats_tournoi():
-    stats_tournoi = {j: {"Victoires": 0, "Défaites": 0, "Points_marques": 0, "Points_encaisses": 0, "Diff": 0, "Tôle_infligées": 0, "Tôle_encaissées": 0} for j in liste_joueurs}
+    stats_tournoi = {j: {"Victoires": 0, "Défaites": 0, "Points_marques": 0, "Points_encaisses": 0, "Diff": 0, "Tôle_infligées": 0, "Tôle_encaissées": 0} for j in joueurs_tournoi}
     
     if not tournoi_tat_df.empty:
         for _, row in tournoi_tat_df.iterrows():
@@ -531,7 +531,7 @@ if mode == "🏆 Tournoi":
         if tournoi_tat_df.empty:
             st.info("Aucun résultat enregistré pour le moment")
         else:
-            recap = pd.DataFrame("", index=liste_joueurs, columns=liste_joueurs)
+            recap = pd.DataFrame("", index=joueurs_tournoi, columns=joueurs_tournoi)
             
             for _, row in tournoi_tat_df.iterrows():
                 vainq = row["vainqueur"]
@@ -556,7 +556,7 @@ if mode == "🏆 Tournoi":
         stats_tournoi = calculer_stats_tournoi()
 
         # Sélection du joueur à afficher
-        joueur = st.selectbox("Choix du joueur", options=liste_joueurs, key="joueur")
+        joueur = st.selectbox("Choix du joueur", options=joueurs_tournoi, key="joueur")
 
         # Mise en forme des stats
         classement = pd.DataFrame(stats_tournoi).T
